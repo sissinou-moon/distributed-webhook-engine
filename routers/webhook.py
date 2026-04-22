@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from services.db import conn
 import psycopg2.extras
 import json
-from services.worker.tasks import process_event
+from worker.tasks import process_event
 
 router = APIRouter()
 
@@ -16,14 +16,20 @@ async def webhook(source: str, request: Request):
     # SAVE RECEIVED TO THE "events" IN  DATABASE
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("""
-        INSERT INTO events (date, status, metadata)
-        VALUES (%s, %s, %s)
+        INSERT INTO events (date, status, metadata, workflow_id)
+        VALUES (%s, %s, %s, %s)
         RETURNING *
-    """, (datetime.now(), "Pending", json.dumps(data)))
+    """, (datetime.now(), "Pending", json.dumps(data), str(source).split("#")[0]))
 
     event_id = cur.fetchone()[0]
     conn.commit()
 
-    process_event.delay(event_id, data)
+    # GET THE WORKFLOW FROM THE DATABASE
+    cur.execute("SELECT * FROM workflows WHERE id = %s LIMIT 1", (str(source).split("/")[0],))
+    workflow = cur.fetchone()
+
+    print(dict(workflow))
+
+    process_event.delay(event_id, data, dict(workflow))
 
     return {"status": "success", "data": data, "event_id": event_id}
