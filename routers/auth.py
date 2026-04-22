@@ -7,7 +7,7 @@ import psycopg2.extras
 import uuid
 from services.otp import sendOTP
 import random
-from services.password import hashPassword
+from services.password import hashPassword, verifyHasedPassword
 from services.jwt import create_tokens, verify_access_token
 
 router = APIRouter()
@@ -270,5 +270,58 @@ async def function(body: dict, response: Response):
     return {
         "success": True,
         "message": "Welcome Back",
-        "metadata": dict(user_data)
+        "metadata": {
+            "access_token": access_token,
+            "user_id": user_data["id"],
+            "email": user_data["email"],
+            "username": user_data["username"],
+            "status": user_data["status"]
+        }
+    }
+
+@router.post("/sign-in")
+async def function(body: dict, response: Response):
+
+    # 1- GET THE EMAIL AND PASSWORD
+    email = body.get("email")
+    password = body.get("password") 
+    device = body.get("device")
+    ip = body.get("ip")
+
+    if not email or not password:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {
+            "success": False,
+            "message": "All fields are required",
+            "metadata": {}
+        }
+
+    # 2- VERIFY THE LOGIN DATA
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("SELECT * FROM users WHERE email = %s LIMIT 1", (email))
+    user = dict(cur.fetchone())
+    
+    verify = verifyHasedPassword(user["password"], password)
+
+    if not verify:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {
+            "success": False,
+            "message": "Wrong Password",
+            "metadata": {}
+        }
+    
+    # 3- SEND OTP
+    otp = str(random.randint(100000, 999999))
+
+    await sendOTP(email, otp)
+
+    # 4- UPDATE USER OTP
+    cur.execute("UPDATE users SET otp = %s WHERE email = %s", (otp, email))
+    conn.commit()
+
+    return {
+        "success": True,
+        "message": "OTP sent successfully",
+        "metadata": user
     }

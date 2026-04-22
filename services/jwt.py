@@ -24,6 +24,6 @@ def verify_access_token(token):
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         return payload["sub"]  # user_id
     except jwt.ExpiredSignatureError:
-        return None  # expired
+        return "Exprired"  # expired
     except jwt.InvalidTokenError:
-        return None  # invalid
+        return "Invalid"  # invalid
