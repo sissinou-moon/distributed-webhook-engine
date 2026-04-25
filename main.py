@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from routers import auth
 from routers import webhook
 from fastapi.middleware.cors import CORSMiddleware
+from routers import oauth
 
 app = FastAPI()
 
@@ -17,6 +18,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/auth")
 app.include_router(webhook.router, prefix="/webhook")
+app.include_router(oauth.router, prefix="/oauth")
 
 @app.get("/state")
 def function():
