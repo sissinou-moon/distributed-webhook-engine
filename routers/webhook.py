@@ -25,11 +25,16 @@ async def webhook(source: str, request: Request):
     conn.commit()
 
     # GET THE WORKFLOW FROM THE DATABASE
-    cur.execute("SELECT * FROM workflows WHERE id = %s LIMIT 1", (str(source).split("/")[0],))
+    cur.execute("SELECT * FROM workflows WHERE id = %s LIMIT 1", (str(source).split("#")[0],))
     workflow = cur.fetchone()
 
     print(dict(workflow))
 
-    process_event.delay(event_id, data, dict(workflow))
+    cur.execute("SELECT * FROM integrations WHERE user_id = %s", (dict(workflow).get("user_id"),))
+    integrations = cur.fetchall()
+
+    print([dict(integration) for integration in integrations])
+
+    process_event.delay(event_id, data, dict(workflow), [dict(integration) for integration in integrations])
 
     return {"status": "success", "data": data, "event_id": event_id}
