@@ -325,3 +325,33 @@ async def function(body: dict, response: Response):
         "message": "OTP sent successfully",
         "metadata": user
     }
+
+
+@router.get("/verify-username")
+async def verifyUsername(body: dict, response: Response):
+    username = body.get("username")
+
+    if not username:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {
+            "success": False,
+            "message": "Username is required",
+            "metadata": {}
+        }
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("SELECT username FROM users where username = %s", (username))
+
+    if cur.fetchone():
+        response.status_code = status.HTTP_409_CONFLICT
+        return {
+            "success": False,
+            "message": "Username already taken",
+            "metadata": {}
+        }
+
+    return {
+        "success": True,
+        "message": "Username is available",
+        "metadata": {}
+    }
