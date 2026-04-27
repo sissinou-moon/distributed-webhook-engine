@@ -1,3 +1,4 @@
+from datetime import timedelta
 from datetime import datetime
 import psycopg2
 from fastapi import Request, Response, status
@@ -71,11 +72,16 @@ async def function(body: dict, response: Response):
             }
         }
 
+    # 5- update the otp in db
+    cur.execute("UPDATE users SET otp = %s WHERE email = %s", (otp, email))
+    conn.commit()
+
     return {
         "success": True,
         "message": "Account Created And OTP Sent Successfully",
         "metadata": {
             "email": email,
+            "user_id": id,
             "username": username,
             "device": device,
             "ip": ip
@@ -130,7 +136,7 @@ async def function(body: dict, response: Response):
         "metadata": {}
     }
 
-@router.get("/verify-otp")
+@router.post("/verify-otp")
 async def function(body: dict, response: Response):
 
     # 1- GET EMAIL AND OTP
@@ -147,25 +153,40 @@ async def function(body: dict, response: Response):
         }
 
     # 3- GET THE OTP FROM THE DATABASE & COMPARE IT WITH THE OTP WE GOT
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute("SELECT otp FROM users WHERE email = %s", (email,))
-    realOTP = cur.fetchone()[0]
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    if realOTP != otp:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
+        cur.execute("SELECT otp FROM users WHERE email = %s", (email,))
+        row = cur.fetchone()
+
+        if not row:
+            response.status_code = 404
+            return {"success": False, "message": "User not found", "metadata": {}}
+
+        realOTP = row[0]
+
+        if realOTP != otp:
+            response.status_code = 401
+            return {"success": False, "message": "Invalid OTP", "metadata": {}}
+
+        cur.execute("""
+            UPDATE users
+            SET otp = NULL, verified = True
+            WHERE email = %s
+        """, (email,))
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return {
             "success": False,
-            "message": "Invalid OTP",
-            "metadata": {}
-        }
-
-    # 4- CHANGE USER ACCOUNT TO VERIFIED
-    cur.execute("""
-UPDATE users
-SET otp = NULL, verified = True
-WHERE email = %s
-    """, (email))
-    conn.commit()
+            "message": str(e),
+            "metadata": {
+                "error": str(e)
+            }
+        } 
 
     return {
         "success": True,
@@ -192,21 +213,33 @@ async def function(body: dict, response: Response):
         }
 
     # 3- REVOKE ALL OLD SESSIONS
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute("""
-UPDATE sessions
-SET status = "REVOKED"
-WHERE user_id = %s
-    """, (id))
-    conn.commit()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            UPDATE sessions
+            SET status = 'REVOKED'
+            WHERE user_id = %s
+        """, (id,))
+        conn.commit()
 
-    # 4- CREATE NEW ACTIVE SESSION
-    access_token, refresh_token = create_tokens(id)
-    cur.execute("""
-INSERT INTO sessions (id, user_id, status, refresh_token, device, ip, created_at,)
-VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """, (str(uuid.uuid4()), id, "ACTIVE", refresh_token, device, ip, datetime.now()))
-    conn.commit()
+        # 4- CREATE NEW ACTIVE SESSION
+        access_token, refresh_token = create_tokens(id)
+        cur.execute("""
+            INSERT INTO sessions (id, user_id, status, refresh_token, device, ip, created_at, expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (str(uuid.uuid4()), id, "ACTIVE", refresh_token, device, ip, datetime.now(), datetime.now() + timedelta(days=30)))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return {
+            "success": False,
+            "message": str(e),
+            "metadata": {
+                "error": str(e)
+            }
+        }
+    # end try
     
     return {
         "success": True,
