@@ -11,33 +11,35 @@ class DashboardRepo:
         rows = cur.fetchall()
         return [dict(row) for row in rows]
 
-    async def get_chart(self, user_id):
+    def get_chart(self, user_id):
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("""
-            SELECT DATE(created_at) as date, COUNT(*) as events
+            SELECT DATE(date), COUNT(*) as events
             FROM events
             WHERE user_id = %s
-            GROUP BY date
-            ORDER BY date DESC
+            GROUP BY DATE(date)
+            ORDER BY DATE(date) DESC
             LIMIT 7
         """, (user_id,))
         return [dict(row) for row in cur.fetchall()]
 
-    async def get_integrations_count(self, user_id):
+    def get_integrations(self, user_id):
         cur = conn.cursor()
         cur.execute("""
-            SELECT COUNT(*) FROM integrations WHERE user_id = %s
+            SELECT app_id
+            FROM integrations
+            WHERE user_id = %s
         """, (user_id,))
-        return cur.fetchone()[0]
+        return [row[0] for row in cur.fetchall()]
 
-    async def get_last_events(self, user_id):
+    def get_last_events(self, user_id):
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("""
-            SELECT id, name, created_at
+            SELECT id, date, status, metadata
             FROM events
             WHERE user_id = %s
-            ORDER BY created_at DESC
-            LIMIT 3
+            ORDER BY Date(date) DESC
+            LIMIT 7
         """, (user_id,))
         return [dict(row) for row in cur.fetchall()]
 
