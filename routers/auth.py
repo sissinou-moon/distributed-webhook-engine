@@ -229,6 +229,18 @@ async def function(body: dict, response: Response):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (str(uuid.uuid4()), id, "ACTIVE", refresh_token, device, ip, datetime.now(), datetime.now() + timedelta(days=30)))
         conn.commit()
+
+        # 5- SAVE REFRESH_TOKEN IN USER COOKIE 
+        # 🍪 set refresh token in cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,     
+            secure=False,       
+            samesite="lax",    
+            max_age=60*60*24*30,  
+            path="/"
+        )
     except Exception as e:
         conn.rollback()
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
